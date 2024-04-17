@@ -1,0 +1,30 @@
+FROM php:8.2-fpm
+ARG TIMEZONE
+
+RUN apt-get update && apt-get install -y git unzip openssl procps acl zlib1g-dev libzip-dev cron libicu-dev
+RUN curl -fsSL https://deb.nodesource.com/setup_19.x | bash - && apt-get install -y nodejs
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN composer --version
+
+# Set timezone
+RUN ln -snf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime && echo ${TIMEZONE} > /etc/timezone
+RUN printf '[PHP]\ndate.timezone = "%s"\n', ${TIMEZONE} > /usr/local/etc/php/conf.d/tzone.ini
+
+# Install extensions
+RUN apt-get install -y libpq-dev \
+    && docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
+    && docker-php-ext-install intl pdo pdo_pgsql bcmath zip
+
+# Install xdebug
+RUN pecl install xdebug-3.3.1
+RUN docker-php-ext-enable xdebug
+
+RUN echo 'alias symfony="php bin/console"' >> ~/.bashrc
+
+RUN mkdir /var/www/html/var
+
+RUN chmod 777 /var/www/html
+
+WORKDIR /var/www/html

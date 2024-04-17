@@ -1,26 +1,55 @@
-version: '3'
+version: '2'
 
 services:
-###> doctrine/doctrine-bundle ###
-  database:
-    image: postgres:${POSTGRES_VERSION:-16}-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-app}
-      # You should definitely change the password in production
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-    healthcheck:
-      test: ["CMD", "pg_isready"]
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+  php-fpm:
+    container_name: bindhq-php-fpm
+    build:
+      context: .
+      dockerfile: docker/php8.2-fpm/Dockerfile
+      args:
+        TIMEZONE: ${TIMEZONE}
     volumes:
-      - database_data:/var/lib/postgresql/data:rw
-      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
-      # - ./docker/db/data:/var/lib/postgresql/data:rw
-###< doctrine/doctrine-bundle ###
+      - ${SYMFONY_APP_PATH}:/var/www/html
+      - ./logs/symfony:/var/www/html/var/log
+      - ./docker/php7.4-fpm/conf.d/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+      - ./docker/php7.4-fpm/conf.d/error_reporting.ini:/usr/local/etc/php/conf.d/error_reporting.ini
+    ports:
+      - "9000"
+    environment:
+      - APP_ENV=${APP_ENV}
+      - ENV_TYPE=symfony
+      - ENABLE_XDEBUG=1
+      - PHP_IDE_CONFIG=serverName=${SERVER_NAME}
+  nginx:
+    container_name: bindhq-nginx
+    build:
+      context: .
+      dockerfile: ./docker/nginx/Dockerfile
+      args:
+        MAX_EXECUTION_TIME: ${MAX_EXECUTION_TIME}
+        SERVER_NAME: ${SERVER_NAME}
+    ports:
+      - "8081:80"
+    volumes_from:
+      - php-fpm
+    volumes:
+      - ./docker/nginx/conf.d/:/etc/nginx/conf.d
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/sites/:/etc/nginx/sites-available
+      - ./:/var/www/html
+      - ./logs/nginx/:/var/log/nginx
+  postgres:
+    container_name: bindhq-postgres
+    image: postgres
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DATABASE}
 
-volumes:
-###> doctrine/doctrine-bundle ###
-  database_data:
-###< doctrine/doctrine-bundle ###
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8082:80"
